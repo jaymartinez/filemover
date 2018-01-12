@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace FileMover
 {
@@ -12,7 +13,9 @@ namespace FileMover
         /// <summary>
         /// Unique identifier
         /// </summary>
-        public int Id { get; set; }
+        public Guid Id { get; set; }
+
+        public Guid ParentId { get; set; }
 
         /// <summary>
         /// The fully populated DirectoryInfo object as a result of GetDirectories()
@@ -25,13 +28,17 @@ namespace FileMover
         public bool IsChosen { get; set; }
 
         /// <summary>
-        /// The file types to search for
+        /// The number of child directories
         /// </summary>
-        public List<string> FileTypes { get; set; }
+        public int NumberOfChildren { get; set; }
+
+        public int TreeNodeIndex { get; set; }
 
         /// <summary>
-        /// Where to copy the files to
+        /// The corresponding TreeNode object
         /// </summary>
-        public string DestinationPath { get; set; }
+        public TreeNode Node { get; set; }
+
+        public TreeObjectType TreeObjType { get; set; }
     }
 }
