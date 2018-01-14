@@ -65,6 +65,7 @@ namespace FileMover
                 selectedItem.Text = _selectedItem.DirInfo.Name;
                 selectedItem.Height = 15;
                 _selectedItem.IsChosen = true;
+                _selectedItem.TreeObjType = TreeObjectType.DESTINATION;
 
                 var controls = DestPanel.Controls;
                 if (controls?.Count == 0)
@@ -88,7 +89,8 @@ namespace FileMover
         /// <param name="e"></param>
         private void BtnStart_Click(object sender, EventArgs e)
         {
-            var items = Items.Where(x => x.IsChosen).ToArray();
+            var items = Items.Where(x => x.IsChosen && x.TreeObjType == TreeObjectType.DESTINATION).ToArray();
+            var files = items[0].DirInfo.GetFiles("*.jpg");
             Console.WriteLine(items.Length);
         }
 
