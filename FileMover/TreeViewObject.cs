@@ -40,5 +40,7 @@ namespace FileMover
         public TreeNode Node { get; set; }
 
         public TreeObjectType TreeObjType { get; set; }
+
+        public Dictionary<string, FileInfo[]> SearchResults { get; set; } = new Dictionary<string, FileInfo[]>();
     }
 }

@@ -38,6 +38,23 @@ namespace FileMover
         public Form1()
         {
             InitializeComponent();
+            string[] drives = Directory.GetLogicalDrives();
+
+            // see if they are valid drives (not a DVD rom drive)
+            drivesComboBox.Items.Clear();
+            if (drives?.Length > 0)
+            {
+                foreach (string s in drives)
+                {
+                    DirectoryInfo directoryInfo = new DirectoryInfo(s);
+                    string attrs = directoryInfo.Attributes.ToString();
+                    if (attrs != "-1")
+                    {
+                        drivesComboBox.Items.Add(s);
+                    }
+                }
+            }
+            drivesComboBox.Items.Add("Network");
             //DirectoryInfo di = new DirectoryInfo(@"\\192.168.0.1\volume1");
         }
 
@@ -52,6 +69,15 @@ namespace FileMover
         }
 
         #region Button Clicks
+        private void BtnSearchNetworkPath_Click(object sender, EventArgs e)
+        {
+            string networkPath = NetworkPathTextbox.Text;
+
+            DirectoryInfo dirInfo = new DirectoryInfo($"{networkPath}\\");
+            ProcessDirectory(dirInfo.GetDirectories());
+            
+        }
+
         /// <summary>
         /// Click handler for the button that adds items to the list
         /// </summary>
@@ -61,9 +87,12 @@ namespace FileMover
         {
             if (_selectedItem != null)
             {
-                Label selectedItem = new Label();
-                selectedItem.Text = _selectedItem.DirInfo.Name;
-                selectedItem.Height = 15;
+                Label selectedItem = new Label
+                {
+                    Text = _selectedItem.DirInfo.Name,
+                    Height = 15,
+                    Width = DestPanel.Width - 5
+                };
                 _selectedItem.IsChosen = true;
                 _selectedItem.TreeObjType = TreeObjectType.DESTINATION;
 
@@ -87,11 +116,133 @@ namespace FileMover
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
+        private void BtnSearch_Click(object sender, EventArgs e)
+        {
+            ResultsBox.Items.Clear();
+            var items = Items.Where(x => x.IsChosen && x.TreeObjType == TreeObjectType.DESTINATION).ToArray();
+
+            foreach (var y in items)
+            {
+                y.SearchResults.Clear();
+            }
+
+            if (items == null || items.Length == 0) return;
+
+            if (_fileTypes.Count == 0)
+            {
+                Console.WriteLine("No filetypes were selected");
+                return;
+            }
+
+            // lazy way of excluding duplicates!
+            HashSet<string> fileTypeSet = new HashSet<string>(_fileTypes);
+
+            foreach (TreeViewObject i in items)
+            {
+                foreach (string ft in fileTypeSet)
+                {
+                    var res = i.DirInfo.GetFiles($"*.{ft}", SearchOption.AllDirectories);
+                    if (res.Length > 0)
+                    {
+                        if (i.SearchResults.ContainsKey(ft))
+                        {
+                            i.SearchResults[ft].Concat(res);
+                        }
+                        else
+                        {
+                            i.SearchResults.Add(ft, res);
+                        }
+                    }
+                }
+            }
+
+
+            var results = items.Select(x => x.SearchResults).ToArray();
+            var count = 0;
+            List<FileInfo> fileInfoList = new List<FileInfo>();
+            foreach (var p in results)
+            {
+                foreach (var i in p)
+                {
+                    fileInfoList.AddRange(i.Value);
+                    count += i.Value.Length;
+                }
+            }
+
+            ResultsBox.Items.AddRange(fileInfoList.OrderByDescending(x => x.CreationTime).ToArray());
+            ResultsLabel.Text = $"Found {count.ToString()} files";
+        }
+
+
+
         private void BtnStart_Click(object sender, EventArgs e)
         {
-            var items = Items.Where(x => x.IsChosen && x.TreeObjType == TreeObjectType.DESTINATION).ToArray();
-            var files = items[0].DirInfo.GetFiles("*.jpg");
-            Console.WriteLine(items.Length);
+            StatusLabel.Text = ""; 
+            var foundItems = ResultsBox.Items;
+            int numItems = foundItems.Count;
+            if (numItems == 0 || string.IsNullOrEmpty(_destinationPath)) return;
+
+            Console.WriteLine($"Preparing to copy {foundItems} files to {_destinationPath}");
+
+            List<string> messages = new List<string>();
+            int filesSucceeded = 0;
+            progressBar1.Visible = true;
+            string copyMove = MoveRadio.Checked ? "Moving" : "Copying";
+            StatusLabel.Visible = true;
+            StatusLabel.Text = $"{copyMove} {numItems}. Please wait..";
+            foreach (var file in foundItems)
+            {
+                if (file is FileInfo f)
+                {
+                    string path = $"{_destinationPath}\\{f.Name}";
+                    if (MoveRadio.Checked)
+                    {
+                        try
+                        {
+                            f.MoveTo(path);
+                            progressBar1.Value = (int)Math.Ceiling(((float)++filesSucceeded / numItems) * 100);
+                        }
+                        catch (IOException ioex)
+                        {
+                            messages.Add($"\n{ioex.Message}. Path: {f.FullName}");
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        f.CopyTo(path, true);
+                        progressBar1.Value = (int)Math.Ceiling(((float)++filesSucceeded / numItems) * 100);
+                    }
+                }
+            }
+
+            copyMove = MoveRadio.Checked ? "moved" : "copied";
+            StatusLabel.ForeColor = Color.Blue;
+            if (messages.Count > 0)
+            {
+                if (filesSucceeded > 0)
+                {
+                    StatusLabel.Text = $"{filesSucceeded} files were {copyMove}, but some files could not be moved! See error.log for details";
+                }
+                else
+                {
+                    StatusLabel.ForeColor = Color.Red;
+                    StatusLabel.Text = $"Error! no files were {copyMove}. See error.log for details";
+                }
+
+                using (StreamWriter file = new StreamWriter(@"D:\Development\Visual Studio\FileMover\FileMover\bin\error.log"))
+                {
+                    foreach (string s in messages)
+                    {
+                        file.WriteLine(s);
+                    }
+                }
+            }
+            else
+            {
+                StatusLabel.Text = $"Successfully {copyMove} {foundItems.Count} files!";
+            }
+
         }
 
         /// <summary>
@@ -102,6 +253,7 @@ namespace FileMover
         private void BtnClear_Click(object sender, EventArgs e)
         {
             DestPanel.Controls.Clear();
+            ResultsBox.Items.Clear();
             foreach(var item in Items)
             {
                 item.IsChosen = false;
@@ -110,30 +262,15 @@ namespace FileMover
 
         private void BtnFileTypesAdd_Click(object sender, EventArgs e)
         {
-            if (!_fileTypes.Contains(FileTypesBox.SelectedItem.ToString()))
+            var selectedItems = FileTypesBox.SelectedItems;
+
+            if (selectedItems.Count > 0)
             {
-                _fileTypes.Add(FileTypesBox.SelectedItem.ToString());
-
-                ChosenFileTypes.Items.Add(FileTypesBox.SelectedItem.ToString());
-
-                /*
-                Label selectedItem = new Label();
-                selectedItem.Text = FileTypesBox.SelectedItem.ToString();
-                selectedItem.Height = 15;
-
-                var controls = FileTypesPanel.Controls;
-                if (controls?.Count == 0)
+                foreach (var si in selectedItems)
                 {
-                    FileTypesPanel.Controls.Add(selectedItem);
+                    _fileTypes.Add(si.ToString());
+                    ChosenFileTypes.Items.Add(si.ToString());
                 }
-                else
-                {
-                    int y = controls[controls.Count - 1].Bounds.Y;
-                    selectedItem.Bounds = new Rectangle(0, y + 15, FileTypesPanel.Bounds.Width, 15);
-                    FileTypesPanel.Controls.Add(selectedItem);
-                }
-                */
-
             }
         }
 
@@ -180,24 +317,22 @@ namespace FileMover
                 {
                     panelNetworkPath.Visible = false;
                     DirectoryInfo dirInfo = new DirectoryInfo($"{dropdown.Text}\\");
-                    List<DirectoryInfo> dirs = dirInfo.GetDirectories().ToList();
-                    ProcessDirectory(dirs);
+                    ProcessDirectory(dirInfo.GetDirectories());
                 }
             }
         }
 
-        private void ProcessDirectory(List<DirectoryInfo> dirs, TreeNode node = null)
+        private void ProcessDirectory(DirectoryInfo[] dirs, TreeNode node = null)
         {
             TreeViewSrc.Nodes.Clear();
 
-            if (dirs?.Count > 0)
+            if (dirs.Length > 0)
             {
                 foreach (DirectoryInfo dir in dirs)
                 {
                     // Don't include hidden or system folders
                     string attrs = dir.Attributes.ToString();
-                    bool pass = attrs.Contains("Hidden") || attrs.Contains("System");
-                    if (pass)
+                    if (attrs.Contains("Hidden") || attrs.Contains("System"))
                     {
                         continue;
                     }
@@ -268,6 +403,5 @@ namespace FileMover
                 base.OnCollectionChanged(e);
             }
         }
-
     }
 }
